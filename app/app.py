@@ -14,6 +14,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans, DBSCAN, AgglomerativeClustering, MiniBatchKMeans
 from sklearn.metrics import silhouette_score
 from sklearn.decomposition import PCA
+from sklearn.neighbors import NearestNeighbors
+from scipy.cluster.hierarchy import linkage, dendrogram
 
 # setting up page configuration
 st.set_page_config(layout="wide")
@@ -277,12 +279,14 @@ def auto_best_clustering(data):
     # 🔹 SELECT BEST
     # ---------------------------
     if not results:
-        return None, None, None, None
+        return None, None, None, None, None
 
     best_algo = max(results, key=lambda x: results[x][0])
     best_score, best_labels, cluster_size, k_inertia = results[best_algo]
 
-    return best_algo, best_score, best_labels, cluster_size, k_inertia if "kmeans" or "minibatch_kmeans" in best_algo else None
+    if best_algo in ["kmeans", "minibatch_kmeans"]:
+        return best_algo, best_score, best_labels, cluster_size, k_inertia
+    return best_algo, best_score, best_labels, cluster_size, None
            
 def plot_cluster( 
         x,
@@ -297,7 +301,7 @@ def plot_cluster(
     st.markdown( f"**Algorithm:** {algorithm} / **Score:** {score} / **Number of Clusters:** {cluster_no} <br>" )
     Left,Right = st.columns(2)
     with Left:
-        if algorithm in ["kmeans", "minibatchkmeans"]:
+        if algorithm in ["kmeans", "minibatch_kmeans"]:
             elbow_k = list(range(2, 10)) if algorithm == "kmeans" else list(range(2, 10))
             # Plot elbow curve
             fig_l, ax_l = plt.subplots(figsize=(7, 5))
@@ -310,7 +314,7 @@ def plot_cluster(
 
         elif algorithm == "dbscan":
             # plot k-distance graph
-            nn = NearestNeighbours(n_neighbors=10)
+            nn = NearestNeighbors(n_neighbors=10)
             nn.fit(x)
             distances, _ = nn.kneighbors(x)
             k_dist = np.sort(distances[:, -1])  # distance to 10th
@@ -525,8 +529,8 @@ else:
                 if x1.empty:
                     st.error("After dropping missing values, there are no rows left. Please clean your CSV or pick other columns.")
                     st.stop()
+                x1 = handle_outliers(x1)
                 x = x1.values
-                x = handle_outliers(x)
 
                 
 
