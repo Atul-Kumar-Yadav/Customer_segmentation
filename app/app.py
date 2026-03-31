@@ -177,7 +177,7 @@ def auto_best_clustering(data):
         cluster_size = None
         k_inertia = []
 
-        for k in range(2, 10):
+        for k in range(3, 10):
             model = KMeans(n_clusters=k, n_init=10)
             labels = model.fit_predict(data_reduced)
             k_inertia.append(model.inertia_)
@@ -202,7 +202,7 @@ def auto_best_clustering(data):
         cluster_size = None
         k_inertia = []
 
-        for k in range(2, 7):
+        for k in range(3, 10):
             model = MiniBatchKMeans(n_clusters=k, batch_size=256)
             labels = model.fit_predict(data_reduced)
             k_inertia.append(model.inertia_)
@@ -258,7 +258,7 @@ def auto_best_clustering(data):
         cluster_size = None
         k_inertia = None    
 
-        for k in range(2, 10):
+        for k in range(3, 10):
             model = AgglomerativeClustering(n_clusters=k)
             labels = model.fit_predict(data_reduced)
 
