@@ -4,3 +4,5 @@ pandas
 matplotlib
 scikit-learn
 seaborn
+openpyxl
+xlrd
