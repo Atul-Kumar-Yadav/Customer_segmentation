@@ -14,8 +14,6 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans, DBSCAN, AgglomerativeClustering, MiniBatchKMeans
 from sklearn.metrics import silhouette_score
 from sklearn.decomposition import PCA
-from sklearn.neighbors import NearestNeighbors
-from scipy.cluster.hierarchy import linkage, dendrogram
 
 # setting up page configuration
 st.set_page_config(layout="wide")
@@ -161,11 +159,11 @@ def auto_best_clustering(data):
     n = len(data)
 
     # 🔹 3. Select algorithms based on size
-    if n < 3000:
+    if n < 1000:
         algos = ["kmeans", "dbscan", "hierarchical"]
-    elif n < 20000:
+    elif n < 4000:
         algos = ["kmeans", "dbscan"]
-    elif n < 100000:
+    elif n < 20000:
         algos = ["kmeans"]
     else:
         algos = ["minibatch"]
@@ -227,7 +225,7 @@ def auto_best_clustering(data):
         best_score = -1
         best_labels = None
         cluster_size = None
-        coarse_range = np.linspace(0.1, 1.0, num=150)
+        coarse_range = np.linspace(0.1, 1.0, num=15)
         cluster_size = None
         k_inertia = None
 
@@ -236,7 +234,7 @@ def auto_best_clustering(data):
             labels = model.fit_predict(data_reduced)
             n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
 
-            if 2 <= n_clusters <= 9:
+            if 3 <= n_clusters <= 9:
                 try:
                     score = silhouette_score(data_reduced, labels)
 
@@ -279,14 +277,12 @@ def auto_best_clustering(data):
     # 🔹 SELECT BEST
     # ---------------------------
     if not results:
-        return None, None, None, None, None
+        return None, None, None, None
 
     best_algo = max(results, key=lambda x: results[x][0])
     best_score, best_labels, cluster_size, k_inertia = results[best_algo]
 
-    if best_algo in ["kmeans", "minibatch_kmeans"]:
-        return best_algo, best_score, best_labels, cluster_size, k_inertia
-    return best_algo, best_score, best_labels, cluster_size, None
+    return best_algo, best_score, best_labels, cluster_size, k_inertia if "kmeans" or "minibatch_kmeans" in best_algo else None
            
 def plot_cluster( 
         x,
@@ -301,7 +297,7 @@ def plot_cluster(
     st.markdown( f"**Algorithm:** {algorithm} / **Score:** {score} / **Number of Clusters:** {cluster_no} <br>" )
     Left,Right = st.columns(2)
     with Left:
-        if algorithm in ["kmeans", "minibatch_kmeans"]:
+        if algorithm in ["kmeans", "minibatchkmeans"]:
             elbow_k = list(range(2, 10)) if algorithm == "kmeans" else list(range(2, 10))
             # Plot elbow curve
             fig_l, ax_l = plt.subplots(figsize=(7, 5))
@@ -314,7 +310,7 @@ def plot_cluster(
 
         elif algorithm == "dbscan":
             # plot k-distance graph
-            nn = NearestNeighbors(n_neighbors=10)
+            nn = NearestNeighbours(n_neighbors=10)
             nn.fit(x)
             distances, _ = nn.kneighbors(x)
             k_dist = np.sort(distances[:, -1])  # distance to 10th
@@ -430,7 +426,7 @@ with top[3]:
     st.metric("Numeric cols", f"{len(num_cols):,}")
 
 
-st.write(df)
+st.write(df.head(100))
 df, clean_original, original_clean = clean_column_names(df)
 
 manual_mode = st.toggle("Manual mode (skip auto-detection)", value=False)
@@ -529,8 +525,8 @@ else:
                 if x1.empty:
                     st.error("After dropping missing values, there are no rows left. Please clean your CSV or pick other columns.")
                     st.stop()
-                x1 = handle_outliers(x1)
                 x = x1.values
+                x = handle_outliers(x)
 
                 
 
@@ -590,7 +586,7 @@ else:
                 ).reset_index()
                 st.info("RFM features calculated successfully.")
                 x = rfm_df[["Recency", "Frequency", "Monetary"]].values
-                st.write(rfm_df)
+                st.write(rfm_df.tail(100))
                 
             run = st.button("🚀 Run clustering", type="primary")
             if not run:
