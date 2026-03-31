@@ -571,7 +571,7 @@ else:
                 x1[col_unit1] = pd.to_numeric(x1[col_unit1], errors='coerce')
                 x1 = x1[(x1[col_quantity1] > 0) & (x1[col_unit1] > 0)]
                 x1 = x1.dropna(subset=[col_date1, col_quantity1, col_unit1])
-                st.write(x1.shape))
+                st.write(x1.shape)
                 #monetary value = quantity * unit price per transaction
                 x1["line_total"] = x1[col_quantity1] * x1[col_unit1]
                 # recency reference date is the most recent invoice date in the dataset
