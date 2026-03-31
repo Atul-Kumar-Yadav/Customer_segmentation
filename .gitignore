@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+.vscode/
+*.log
+.DS_Store
+Thumbs.db
+
+# Keep dataset files tracked
+!data/
+!data/**
