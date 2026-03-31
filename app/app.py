@@ -4,9 +4,9 @@ from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-
+from sklearn.neighbors import NearestNeighbors
 import streamlit as st
-
+from scipy.cluster.hierarchy import linkage, dendrogram
 from streamlit.components.v1 import html
 import re
 import io
@@ -298,7 +298,7 @@ def plot_cluster(
     Left,Right = st.columns(2)
     with Left:
         if algorithm in ["kmeans", "minibatchkmeans"]:
-            elbow_k = list(range(2, 10)) if algorithm == "kmeans" else list(range(2, 10))
+            elbow_k = list(range(3, 10)) if algorithm == "kmeans" else list(range(2, 10))
             # Plot elbow curve
             fig_l, ax_l = plt.subplots(figsize=(7, 5))
             ax_l.plot(elbow_k, factor2, marker="o")
