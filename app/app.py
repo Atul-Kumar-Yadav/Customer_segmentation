@@ -23,7 +23,7 @@ st.set_page_config(layout="wide")
 def load_file(file) -> pd.DataFrame:
     file_name = file.name.lower()
     if file_name.endswith('.csv') :
-        encodings = ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252',"utf-8-sig"]
+        encodings = ["utf-8", "utf-8-sig", "latin-1"]
         for enc in encodings:
             try:
                 df = pd.read_csv(file, encoding=enc, low_memory=False)
