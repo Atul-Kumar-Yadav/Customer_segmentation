@@ -1,6 +1,7 @@
 from statistics import mode
 from mpl_toolkits.mplot3d import Axes3D
-
+import seaborn as sns 
+from sklearn.preprocessing import MinMaxScaler
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -36,6 +37,37 @@ def load_file(file) -> pd.DataFrame:
         return df
     else:
         raise ValueError("File type is not supported.")
+label_sets = {
+    3: ["High", "Medium", "Low"],
+    4: ["Very High", "High", "Low", "Very Low"],
+    5: ["Extremely High", "High", "Average", "Low", "Extremely Low"],
+    6: ["Extremely High", "Very High", "High", "Low", "Very Low", "Extremely Low"],
+    7: ["Extremely High", "Very High", "High", "Average", "Low", "Very Low", "Extremely Low"],
+    8: ["Extremely High", "Very High", "High", "Above Average", "Below Average", "Low", "Very Low", "Extremely Low"],
+    9: ["Extremely High", "Very High", "High", "Above Average", "Average", "Below Average", "Low", "Very Low", "Extremely Low"],
+}
+def build_segment_map(x_df, labels, lower_is_better=None):
+    lower_is_better = set(lower_is_better or [])
+    tmp = x_df.copy()
+    tmp["cluster"] = labels
+
+    profile = tmp.groupby("cluster").mean(numeric_only=True)
+
+    scaled = pd.DataFrame(
+        MinMaxScaler().fit_transform(profile),
+        index=profile.index,
+        columns=profile.columns
+    )
+
+    score = 0
+    for c in scaled.columns:
+        score += (1 - scaled[c]) if c in lower_is_better else scaled[c]
+
+    ordered = score.sort_values(ascending=False).index.tolist()
+    names = label_sets[len(ordered)]
+    cmap = {cid: names[i] for i, cid in enumerate(ordered)}
+
+    return cmap
 # Function to clean column names by removing special characters and extra spaces
 def clean_column_names(df):
 
@@ -62,7 +94,7 @@ def check_rfm(df):
         if any(key in col for key in customer_key):
             customer_columns.append(col)
             
-        date_key = ['invoicedate','orderdate','date', 'time', 'timestamp', 'invoice', 'order', 'purchase']
+        date_key = ['invoicedate','orderdate','date', 'time', 'timestamp', 'invoice', 'order', 'purchase','recency', 'frequency']
     for col in df.columns:
         if any(key in col for key in date_key):
             date_columns.append(col)
@@ -82,14 +114,7 @@ def check_rfm(df):
         'monetary_col' : monetary_columns,
         'rfm_applicable': rfm_applicable
     }
-def useless_columns(df):
-    drop_key = ['name', 'description', 'address','stockcode', 'product','country','phone', 'email', 'url']
-    cols_to_drop = []
-    for col in df.columns:
-        if any(key in col for key in drop_key):
-            cols_to_drop.append(col)
-    df = df.drop(columns=cols_to_drop)
-    return df
+
 
 def handle_outliers(data: pd.DataFrame) -> pd.DataFrame:
     df = data.copy()
@@ -109,7 +134,7 @@ def handle_outliers(data: pd.DataFrame) -> pd.DataFrame:
     # row is outlier if any selected numeric feature is outside bounds
     outlier_rows = ((num < lower) | (num > upper)).any(axis=1)
 
-    return df.loc[~outlier_rows].reset_index(drop=True)
+    return df.loc[~outlier_rows]
 
 
 def numeric_columns(df: pd.DataFrame):
@@ -141,9 +166,10 @@ def detect_basic_columns(df):
 
 
             
-def auto_best_clustering(data):
+def auto_best_clustering(data,algorithm : None):
 
     results = {}
+    algo = algorithm
 
     # 🔹 1. Scale data
     scaler = StandardScaler()
@@ -157,16 +183,19 @@ def auto_best_clustering(data):
         data_reduced = data_scaled
 
     n = len(data)
-
-    # 🔹 3. Select algorithms based on size
-    if n < 1000:
-        algos = ["kmeans", "dbscan", "hierarchical"]
-    elif n < 4000:
-        algos = ["kmeans", "dbscan"]
-    elif n < 20000:
-        algos = ["kmeans"]
+    
+    if algo is not None:
+        algos = [algo]
     else:
-        algos = ["minibatch"]
+        # 🔹 3. Select algorithms based on size
+        if n < 1000:
+            algos = ["kmeans", "dbscan", "hierarchical"]
+        elif n < 4000:
+            algos = ["kmeans", "dbscan"]
+        elif n < 20000:
+            algos = ["kmeans", "minibatch_kmeans"]
+        else:
+            algos = ["minibatch_kmeans"]
 
     # ---------------------------
     # 🔹 KMEANS
@@ -196,7 +225,7 @@ def auto_best_clustering(data):
     # ---------------------------
     # 🔹 MINIBATCH KMEANS
     # ---------------------------
-    if "minibatch" in algos:
+    if "minibatch_kmeans" in algos:
         best_score = -1
         best_labels = None
         cluster_size = None
@@ -292,13 +321,14 @@ def plot_cluster(
         factor2,               # inertia /eps
         labels,               # cluster labels
         cluster_no,           # selected clusters (for kmeans-like) 
-        features
+        features,
+        segment_map=None         # mapping of cluster label to segment name (optional
 ):
-    st.markdown( f"**Algorithm:** {algorithm} / **Score:** {score} / **Number of Clusters:** {cluster_no} <br>" )
+    st.markdown( f"**Algorithm:** {algorithm} / **Score:** {score} / **Number of Clusters:** {cluster_no} " )
     Left,Right = st.columns(2)
     with Left:
-        if algorithm in ["kmeans", "minibatchkmeans"]:
-            elbow_k = list(range(3, 10)) if algorithm == "kmeans" else list(range(2, 10))
+        if algorithm in ["kmeans", "minibatch_kmeans"]:
+            elbow_k = list(range(3, 10)) 
             # Plot elbow curve
             fig_l, ax_l = plt.subplots(figsize=(7, 5))
             ax_l.plot(elbow_k, factor2, marker="o")
@@ -310,7 +340,7 @@ def plot_cluster(
 
         elif algorithm == "dbscan":
             # plot k-distance graph
-            nn = NearestNeighbours(n_neighbors=10)
+            nn = NearestNeighbors(n_neighbors=10)
             nn.fit(x)
             distances, _ = nn.kneighbors(x)
             k_dist = np.sort(distances[:, -1])  # distance to 10th
@@ -337,33 +367,58 @@ def plot_cluster(
         plt.close(fig_l) 
         
     with Right:
-        if mode == "Basic_Mode":
+        if mode == "Basic_Mode" or mode == "Manual_Mode" and x.shape[1] == 2:
             fig_r,ax_r = plt.subplots(figsize=(7,5))
             if x.shape[1]<2:
                 ax_r.text(0.5, 0.5, "Not enough features to plot clusters", ha="center", va="center")
                 ax_r.axis("off")
             else:
-                ax_r.scatter(x[:,0], x[:,1], c=labels, cmap="tab10", alpha=0.85, s=30)
-                ax_r.set_title("Cluster Visualization 2D")  
+                unique_clusters = sorted(np.unique(labels))
+                cmap = plt.cm.get_cmap("tab10", len(unique_clusters))
+
+                for i, cid in enumerate(unique_clusters):
+                    m = labels == cid
+                    seg_name = segment_map.get(cid, "Unknown")  # segment name only
+                    ax_r.scatter(
+                        x[m, 0], x[m, 1],
+                        color=cmap(i),
+                        alpha=0.85,
+                        s=30,
+                        label=seg_name
+                    )
+                ax_r.set_title("Cluster Visualization 2D", fontsize=12,pad=10)  
                 ax_r.set_xlabel(features[0])    
                 ax_r.set_ylabel(features[1])
+                ax_r.legend(title="customer importance")
 
-        elif mode == "RFM_Mode":
-            fig_r = plt.figure(figsize=(7, 7))
-            ax_r = fig_r.add_subplot(111, projection='3d')
+        elif mode == "RFM_Mode" or mode == "Manual_Mode" and x.shape[1] >= 3:
+            fig_r, ax_r = plt.subplots(figsize=(5, 5), subplot_kw={"projection": "3d"})
+
             if x.shape[1] < 3:
                 ax_r.text(0.5, 0.5, "Need 3 features to plot clusters", ha="center", va="center")
                 ax_r.axis("off")
             else:
-                sc = ax_r.scatter(x[:, 0], x[:, 1], x[:, 2], c=labels, cmap="tab10", alpha=0.85, s=30)
-                ax_r.set_title("Cluster Visualization 3D")  
-                ax_r.set_xlabel(features[0])    
-                ax_r.set_ylabel(features[1])
-                ax_r.set_zlabel(features[2])
+                unique_clusters = sorted(np.unique(labels))
+                cmap = plt.cm.get_cmap("tab10", len(unique_clusters))
 
-        elif mode == "Manual_Mode":
-            ax_r.text(0.5, 0.5, "No specific plot for this mode", ha="center", va="center")
-            ax_r.axis("off")
+                for i, cid in enumerate(unique_clusters):
+                    m = labels == cid
+                    seg_name = segment_map.get(cid, "Unknown")
+                    ax_r.scatter(
+                        x[m, 0], x[m, 1], x[m, 2],
+                        color=cmap(i), alpha=0.85, s=30, label=seg_name
+                    )
+                ax_r.set_title("Cluster Visualization 3D",fontsize=8,pad=0 )  
+                ax_r.set_xlabel(features[0],labelpad=1,fontsize=7)    
+                ax_r.set_ylabel(features[1],labelpad=1,fontsize=7)
+                ax_r.set_zlabel(features[2],labelpad=-17,fontsize=7,rotation=90)
+                fig_r.subplots_adjust(left=0.08, right=0.95, bottom=0.16, top=0.90)
+                ax_r.tick_params(axis='x', labelsize=8,pad=5)
+                ax_r.tick_params(axis='y', labelsize=8,pad=5)
+                ax_r.tick_params(axis='z', labelsize=8,pad=5)
+                ax_r.legend(title="Customer Importance", fontsize=7, title_fontsize=8, loc="best")
+
+
 
         st.pyplot(fig_r, use_container_width=True)
         plt.close(fig_r)
@@ -429,20 +484,18 @@ with top[3]:
 st.write(df.head(100))
 df, clean_original, original_clean = clean_column_names(df)
 
-manual_mode = st.toggle("Manual mode (skip auto-detection)", value=False)
+
 
 mode = None
+manual_mode = st.toggle("Manual(skip auto-detection)", value=False, help="Toggle on to select features and algorithm manually.")
 
-if manual_mode:
-    st.info("Manual mode enabled. Please select features manually.")
-    mode = "manual"
-
-else:
+if not manual_mode:
     basic_info = detect_basic_columns(df)
 
     if basic_info["basic_clustering"]:
         st.success("Basic clustering features detected!")
         mode = "Basic_Mode"
+        col = "customerid"
         features =[]
         features.extend(basic_info["income_cols"])
         features.extend(basic_info["spending_cols"])
@@ -465,27 +518,36 @@ else:
             st.markdown('<div class="card"><div class="small muted">Income features</div></div><br>', unsafe_allow_html=True)
             st.write("hint")
             
-        x1=df[[col_x1,col_y1]].dropna()
+        x1=df[[col_x1,col_y1]]
+        x1 = x1[x1 > 0]
+        x1= handle_outliers(x1).dropna()
+
         if x1.empty:    
                 st.error("After dropping missing values, there are no rows left. Please clean your CSV or pick other columns.")
-                st.stop()   
-        # x1 = handle_outliers(x1)
+                st.stop()
+           
         x = x1.values
+        
 
         run = st.button("🚀 Run clustering", type="primary")
         if not run:
             st.stop()   
          
-        algo, score, labels, no_cluster, factor2  = auto_best_clustering(x)
+        algo, score, labels, no_cluster, factor2  = auto_best_clustering(x, None)
         
         if algo is None:
             st.error("Clustering failed. Please try manual mode or clean your data.")
             st.stop()
         else:
             st.success(f"Best algorithm: {algo} with silhouette score: {score:.2f}")
-            df["cluster"] = labels
+            segment_map = build_segment_map(x1, labels)
+            df["cluster"] = np.nan
+            df.loc[x1.index, "cluster"] = labels
+            df["Customer_Importance"] = df["cluster"].map(segment_map)
+
+            st.write(df)
             st.write(f"Number of clusters: {no_cluster}")
-            plot_cluster(x, mode, algo, score, factor2, labels, no_cluster, [col_x, col_y])
+            plot_cluster(x, mode, algo, score, factor2, labels, no_cluster, [col_x, col_y], segment_map=segment_map)
             
 
 
@@ -522,11 +584,17 @@ else:
                         col_monetary = st.selectbox("Monetary Value", options=original_features, index=2)
                         col_monetary1 = original_clean.get(col_monetary, col_monetary)
                 x1 = df[[col_r1, col_f1, col_monetary1]].dropna()
+                x1 = x1[x1 > 0]
                 if x1.empty:
                     st.error("After dropping missing values, there are no rows left. Please clean your CSV or pick other columns.")
                     st.stop()
+                # x1= handle_outliers(x1).dropna()
+                x1 = x1.dropna()
+
+                if x1.empty:
+                    st.error("After handling outliers, there are no rows left. Please clean your CSV or pick other columns.")
+                    st.stop()
                 x = x1.values
-                x = handle_outliers(x)
 
                 
 
@@ -585,30 +653,95 @@ else:
                     Monetary=("line_total", 'sum')
                 ).reset_index()
                 st.info("RFM features calculated successfully.")
-                x = rfm_df[["Recency", "Frequency", "Monetary"]].values
-                st.write(rfm_df.tail(100))
+                x1 = rfm_df[["Recency", "Frequency", "Monetary"]].dropna()
+                # x1 = handle_outliers(x1).dropna()
+                if x1.empty:
+                    st.error("After handling outliers, there are no rows left. Please clean your CSV or pick other columns.")
+                    st.stop()
+                st.write(x1.head(100))
+                x = x1.values
+                
                 
             run = st.button("🚀 Run clustering", type="primary")
             if not run:
                 st.stop()
-            algo, score, labels, no_cluster, factor2  = auto_best_clustering(x)
+            algo, score, labels, no_cluster, factor2  = auto_best_clustering(x, None)
             if algo is None:
                 st.error("Clustering failed. Please try manual mode or clean your data.")
                 st.stop()
             else:
                 st.success(f"Best algorithm: {algo} with silhouette score: {score:.2f}")
-                rfm_df["cluster"] = labels
                 st.write(f"Number of clusters: {no_cluster}")
-                plot_cluster(x, mode, algo, score, factor2, labels, no_cluster, ["Recency", "Frequency", "Monetary"])
+                
+                if rfm_direct:
+                    df["cluster"] = np.nan
+                    df.loc[x1.index, "cluster"] = labels
+                    segment_map = build_segment_map(x1, labels, lower_is_better=[col_r1])
+                    df["Customer_Importance"] = df["cluster"].map(segment_map)
+                else:
+                    rfm_df["cluster"] = np.nan
+                    rfm_df.loc[x1.index, "cluster"] = labels
+                    segment_map = build_segment_map(x1, labels, lower_is_better=["Recency"])
+                    rfm_df["Customer_Importance"] = rfm_df["cluster"].map(segment_map)
+                    df=rfm_df
+                st.write(df)
 
+                plot_cluster(x, mode, algo, score, factor2, labels, no_cluster, ["Recency", "Frequency", "Monetary"],segment_map=segment_map)
             
 
 
 
         else:
             st.warning("No automatic clustering possible. Switch to manual mode.")
-            mode = "Manual_Mode"
+            
+elif manual_mode:
+    st.info("Manual mode enabled. Please select features manually.")
+    mode = "Manual_Mode" 
+    original_features = [clean_original.get(f, f) for f in num_cols]
+    clean_features = {original_clean.get(f,f) for f in num_cols}
+    features = st.multiselect("Select features for clustering", options=original_features, default=original_features[:2],
+                              max_selections=5)
+   
+    if len( features)<2:
+        st.error("Please select at least 2 features for clustering.")
+        st.stop()
+    selected_cols = [original_clean.get(f, f) for f in features]
+    x1 = df[selected_cols].dropna()
+    if x1.empty:
+        st.error("After dropping missing values, there are no rows left. Please clean your CSV or pick other columns.")
+        st.stop()
+    x1 = x1[x1 > 0]
+    x1 = handle_outliers(x1).dropna()
+    # x1 = x1.dropna()
+    st.write(x1)
+    algo = st.selectbox("Select clustering algorithm", options=["kmeans", "dbscan", "hierarchical", "minibatch_kmeans"], index=0)
+    run = st.button("🚀 Run clustering", type="primary")
+    if not run:
+        st.stop()
+    algo, score, labels, no_cluster, factor2 = auto_best_clustering(x1.values,algo)
+    segment_map = build_segment_map(x1, labels, lower_is_better=["recency"] if "Recency" in features else None)
+    st.success(f"Silhouette Score for selected algorithm: {score:.2f} / No. of clusters: {no_cluster}")
+    plot_cluster(x1.values, mode, algo, score, factor2, labels, no_cluster, features if len(features)<4 else ["PCA feature 1", "PCA feature 2", "PCA feature 3"], segment_map=segment_map)
+    df["cluster"] = np.nan
+    df.loc[x1.index, "cluster"] = labels
+    df["Customer_Importance"] = df["cluster"].map(segment_map)
+    st.write(df)
+df = df.dropna(subset=["cluster"])
+# keep original column names for output
+final_df = df.copy()
+final_df.columns = [clean_original.get(c, c) for c in final_df.columns]
 
+csv_bytes = final_df.to_csv(index=False).encode("utf-8")
+
+st.download_button(
+    "⬇️ Download Final CSV",
+    data=csv_bytes,
+    file_name="customer_segmentation_final.csv",
+    mime="text/csv",
+)
+
+      
+            
 
 
 # # Getting missing values reports using ydata_profiling
