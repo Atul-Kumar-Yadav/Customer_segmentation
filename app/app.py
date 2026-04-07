@@ -306,12 +306,12 @@ def auto_best_clustering(data,algorithm : None):
     # 🔹 SELECT BEST
     # ---------------------------
     if not results:
-        return None, None, None, None
+        return None, None, None, None, None
 
     best_algo = max(results, key=lambda x: results[x][0])
     best_score, best_labels, cluster_size, k_inertia = results[best_algo]
 
-    return best_algo, best_score, best_labels, cluster_size, k_inertia if "kmeans" or "minibatch_kmeans" in best_algo else None
+    return best_algo, best_score, best_labels, cluster_size, k_inertia 
            
 def plot_cluster( 
         x,
@@ -719,6 +719,9 @@ elif manual_mode:
     if not run:
         st.stop()
     algo, score, labels, no_cluster, factor2 = auto_best_clustering(x1.values,algo)
+    if algo is None:
+        st.error("Clustering failed. Please try different features, algorithm or clean your data.")
+        st.stop()
     segment_map = build_segment_map(x1, labels, lower_is_better=["recency"] if "Recency" in features else None)
     st.success(f"Silhouette Score for selected algorithm: {score:.2f} / No. of clusters: {no_cluster}")
     plot_cluster(x1.values, mode, algo, score, factor2, labels, no_cluster, features if len(features)<4 else ["PCA feature 1", "PCA feature 2", "PCA feature 3"], segment_map=segment_map)
@@ -726,19 +729,20 @@ elif manual_mode:
     df.loc[x1.index, "cluster"] = labels
     df["Customer_Importance"] = df["cluster"].map(segment_map)
     st.write(df)
-df = df.dropna(subset=["cluster"])
-# keep original column names for output
-final_df = df.copy()
-final_df.columns = [clean_original.get(c, c) for c in final_df.columns]
+if mode in ["Basic_Mode", "RFM_Mode", "Manual_Mode"]:
+    df = df.dropna(subset=["cluster"])
+    # keep original column names for output
+    final_df = df.copy()
+    final_df.columns = [clean_original.get(c, c) for c in final_df.columns]
 
-csv_bytes = final_df.to_csv(index=False).encode("utf-8")
+    csv_bytes = final_df.to_csv(index=False).encode("utf-8")
 
-st.download_button(
-    "⬇️ Download Final CSV",
-    data=csv_bytes,
-    file_name="customer_segmentation_final.csv",
-    mime="text/csv",
-)
+    st.download_button(
+        "⬇️ Download Final CSV",
+        data=csv_bytes,
+        file_name="customer_segmentation_final.csv",
+        mime="text/csv",
+    )
 
       
             
